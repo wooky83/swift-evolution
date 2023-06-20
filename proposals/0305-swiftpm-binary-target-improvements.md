@@ -3,10 +3,11 @@
 * Proposal: [SE-0305](0305-swiftpm-binary-target-improvements.md)
 * Authors: [Anders Bertelrud](https://github.com/abertelrud), [Tom Doron](https://github.com/tomerd)
 * Review Manager: [Tom Doron](https://github.com/tomerd)
-* Status: **Active Review (April 14 - 26 2021)**
+* Status: **Implemented (Swift 5.6)**
+* Decision Notes: [Acceptance](https://forums.swift.org/t/accepted-se-0305-package-manager-binary-target-improvements/47742) 
 * Previous Revision: [1](https://github.com/apple/swift-evolution/blob/main/proposals/0305-swiftpm-binary-target-improvements.md)
 * Forum Discussion: [SE-0305: Package Manager Binary Target Improvements](https://forums.swift.org/t/se-0305-package-manager-binary-target-improvements/45589)
-* Review: [1](https://forums.swift.org/t/se-0305-package-manager-binary-target-improvements/)
+* Review: [1](https://forums.swift.org/t/se-0305-package-manager-binary-target-improvements/) [2](https://forums.swift.org/t/se-0305-2nd-review-package-manager-binary-target-improvements/)
 * Implementation: Available in [recent `main` snapshots](https://swift.org/download/#snapshots)
 
 ## Introduction
@@ -15,7 +16,7 @@ This proposal extends SwiftPM binary targets to also support other kinds of preb
 
 ## Motivation
 
-The Swift Package Manager’s `binaryTarget` type lets packages vend libraries that either cannot be built in Swift Package Manager for technical reasons, or for which the source code cannot be published for legal or other reasons.
+The Swift Package Manager’s [`binaryTarget` type](https://github.com/apple/swift-evolution/blob/main/proposals/0272-swiftpm-binary-dependencies.md) lets packages vend libraries that either cannot be built in Swift Package Manager for technical reasons, or for which the source code cannot be published for legal or other reasons.
 
 In the current version of SwiftPM, binary targets only support libraries in an Xcode-oriented format called *XCFramework*, and only for Apple platforms.
 
@@ -180,7 +181,7 @@ Each bundle dictionary contains:
 
 The individual `.zip` files are expected to be located next to the `.artifactbundleindex` file, and thus only their filenames are listed in the index.
 
-The checksum for each `.zip` file in the index is computed in the same manner as for other binary `.zip` files, i.e. using `swift` `package` `checmsum`. The checksum in the binary target that references the `.artifactbundleindex` is the checksum of the `.artifactbundleindex` file itself. In this way, SwiftPM can validate the integrity of any of the `.zip` archives referenced by the index file.
+The checksum for each `.zip` file in the index is computed in the same manner as for other binary `.zip` files, i.e. using `swift package compute-checksum`. The checksum in the binary target that references the `.artifactbundleindex` is the checksum of the `.artifactbundleindex` file itself. In this way, SwiftPM can validate the integrity of any of the `.zip` archives referenced by the index file.
 
 ## Example
 

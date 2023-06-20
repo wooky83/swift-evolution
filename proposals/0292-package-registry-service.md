@@ -5,11 +5,18 @@
            [Whitney Imura](https://github.com/whitneyimura),
            [Mattt Zmuda](https://github.com/mattt)
 * Review Manager: [Tom Doron](https://github.com/tomerd)
-* Status: **Active Review (March 25 - April 5 2021)**
+* Status: **Implemented (Swift 5.7)**
 * Implementation: [apple/swift-package-manager#3023](https://github.com/apple/swift-package-manager/pull/3023)
-* Review: [Review](https://forums.swift.org/t/se-0292-package-registry-service/)
+* Decision Notes: [Rationale](https://forums.swift.org/t/accepted-with-modifications-se-0292-package-registry-service/49849)
+* Review:
+  [1](https://forums.swift.org/t/se-0292-package-registry-service/)
+  [2](https://forums.swift.org/t/se-0292-2nd-review-package-registry-service/)
+  [3](https://forums.swift.org/t/se-0292-3rd-review-package-registry-service/)
+  [Amendment](https://forums.swift.org/t/amendment-se-0292-package-registry-service/)
 * Previous Revision:
   [1](https://github.com/apple/swift-evolution/blob/b48527526b5748a60b0b23846d5880e9cc2c4711/proposals/0292-package-registry-service.md)
+  [2](https://github.com/apple/swift-evolution/blob/53bd6d3813c40ebd07701727c8cfb6fedd751e2a/proposals/0292-package-registry-service.md)
+  [3](https://github.com/apple/swift-evolution/blob/971d1f43bce718a45227432782a312cc5de99870/proposals/0292-package-registry-service.md)
 
 ## Introduction
 
@@ -117,8 +124,8 @@ and downloading the source archive for a release:
 | `GET`  | `/{scope}/{name}/{version}.zip`                           | Download source archive for a package release   |
 | `GET`  | `/identifiers{?url}`                                      | Lookup package identifiers registered for a URL |
 
-A formal specification for the package registry interface
-is provided alongside this proposal.
+A formal specification for the package registry interface is provided
+[alongside this proposal](https://github.com/apple/swift-package-manager/blob/main/Documentation/Registry.md).
 In addition,
 an OpenAPI (v3) document
 and a reference implementation written in Swift
@@ -145,34 +152,25 @@ A package scope consists of
 alphanumeric characters and hyphens.
 Hyphens may not occur at the beginning or end,
 nor consecutively within a scope.
-The maximum length of a package name is 39 characters.
+The maximum length of a package scope is 39 characters.
 A valid package scope matches the following regular expression pattern:
 
 ```regexp
-\A[a-zA-Z\d](?:[a-zA-Z\d]|-(?=[a-zA-Z\d])){0,39}\z
+\A[a-zA-Z\d](?:[a-zA-Z\d]|-(?=[a-zA-Z\d])){0,38}\z
 ```
 
 A package's *name* uniquely identifies a package in a scope.
-The maximum length of a package name is 128 characters.
-A valid package name matches the following regular expression pattern:
+A package name consists of alphanumeric characters, underscores, and hyphens.
+Hyphens and underscores may not occur at the beginning or end,
+nor consecutively within a name.
+The maximum length of a package name is 100 characters.
+A valid package scope matches the following regular expression pattern:
 
 ```regexp
-\A\p{XID_Start}\p{XID_Continue}{0,127}\z
+\A[a-zA-Z0-9](?:[a-zA-Z0-9]|[-_](?=[a-zA-Z0-9])){0,99}\z
 ```
 
-> For more information,
-> see [Unicode Identifier and Pattern Syntax][UAX31].
-
-Package scopes are case-insensitive
-(for example, `mona` ≍ `MONA`).
-Package names are
-case-insensitive,
-diacritic-insensitive
-(for example, `Å` ≍ `A`), and
-width-insensitive
-(for example, `Ａ` ≍ `A`).
-Package names are compared using
-[Normalization Form Compatible Composition (NFKC)][UAX15].
+Package scopes and names are compared using locale-independent case folding.
 
 #### New `PackageDescription` API
 
@@ -242,7 +240,7 @@ that is, the `package` parameter in `.product(name:package)` method calls.
 
 ```diff
     targets: [
-        .target(name: "MyLibrary", 
+        .target(name: "MyLibrary",
                 dependencies: [
                   .product(name: "LinkedList",
 -                          package: "LinkedList")
@@ -306,7 +304,7 @@ Swift Package Manager compares the integrity checksum provided by the server
 against any existing checksum for that release in the `Package.resolved` file
 as well as the integrity checksum reported by the `compute-checksum` subcommand:
 
-```terminal
+```console
 $ swift package compute-checksum LinkedList-1.2.0.zip
 1feec3d8d144814e99e694cd1d785928878d8d6892c4e59d12569e179252c535
 ```
@@ -339,7 +337,7 @@ a package's contents may have changed at some point.
 Swift Package Manager will refuse to download dependencies
 if there's a mismatch in integrity checksums.
 
-```terminal
+```console
 $ swift build
 error: checksum of downloaded source archive of dependency 'mona.LinkedList' (c2b934fe66e55747d912f1cfd03150883c4f037370c40ca2ad4203805db79457) does not match checksum specified by the manifest (ed008d5af44c1d0ea0e3668033cae9b695235f18b1a99240b7cf0f3d9559a30d)
 ```
@@ -373,7 +371,7 @@ in the root directory of a package
 to generate a source archive for the current working tree.
 For example:
 
-```terminal
+```console
 $ tree -a -L 1
 LinkedList
 ├── .git
@@ -399,19 +397,23 @@ the name of the package with a `.zip` extension
 (for example, "LinkedList.zip").
 You can override this behavior with the `--output` option:
 
-```terminal
+```console
 $ git checkout 1.2.0
 $ swift package archive-source --output="LinkedList-1.2.0.zip"
 # Created LinkedList-1.2.0.zip
 ```
 
 The `archive-source` subcommand has the equivalent behavior of
-[`git-archive(1)`] using the `zip` format at its default compression level.
+[`git-archive(1)`] using the `zip` format at its default compression level,
+with entries prefixed by the basename of the generated archive's filename.
 Therefore, the following command produces
 equivalent output to the previous example:
 
-```terminal
-$ git archive --format zip --output LinkedList-1.2.0.zip 1.2.0
+```console
+$ git archive --format zip \
+              --prefix LinkedList-1.2.0
+              --output LinkedList-1.2.0.zip \
+              1.2.0
 ```
 
 If desired, this behavior could be changed in future tool versions.
@@ -450,29 +452,33 @@ SYNOPSIS
 OPTIONS:
   --global    Apply settings to all projects for this user
   --scope     Associate the registry with a given scope
+  --login     Specify a user name for the remote machine
+  --password  Supply a password for the remote machine
 ```
 
 Running the `package-registry set` subcommand
 in the root directory of a package
-creates or updates the `.swiftpm/config/registries.json` file
+creates or updates the `.swiftpm/configuration/registries.json` file
 with a new top-level `registries` key
 that's associated with an object containing the specified registry URLs.
+The default, unscoped registry is associated with the key `[default]`.
+Any scoped registries are keyed by their case-folded name.
 
 For example,
 a build server that doesn't allow external network connections
 may configure a registry URL to resolve dependencies
 using an internal registry service.
 
-```terminal
+```console
 $ swift package-registry set https://internal.example.com/
-$ cat .swiftpm/config/registries.json
+$ cat .swiftpm/configuration/registries.json
 ```
 
 ```json
 {
   "registries": {
-    "default": { 
-      "url": "https://internal.example.com" 
+    "[default]": {
+      "url": "https://internal.example.com"
     }
   },
   "version": 1
@@ -485,7 +491,7 @@ Swift Package Manager commands like
 `swift package resolve` and `swift package update`
 fail with an error.
 
-```terminal
+```console
 $ swift package resolve
 error: cannot resolve dependency 'mona.LinkedList' without a configured registry
 ```
@@ -500,14 +506,14 @@ a user might resolve all packages with the package scope `example`
 (such as `example.PriorityQueue`)
 to a private registry.
 
-```terminal
+```console
 $ swift package-registry set https://internal.example.com/ --scope example
-$ cat .swiftpm/config/registries.json
+$ cat .swiftpm/configuration/registries.json
 ```
 
 ```json
 {
-  "registries": { 
+  "registries": {
     "example": {
       "url": "https://internal.example.com"
     }
@@ -530,7 +536,7 @@ to complement the `package-registry set` subcommand.
 
 ```manpage
 SYNOPSIS
-	swift package-registry unset <url> [options]
+	swift package-registry unset [options]
 OPTIONS:
   --global    Apply settings to all projects for this user
   --scope     Removes the registry's association to a given scope
@@ -538,7 +544,7 @@ OPTIONS:
 
 Running the `package-registry unset` subcommand
 in the root directory of a package
-updates the `.swiftpm/config/registries.json` file
+updates the `.swiftpm/configuration/registries.json` file
 to remove the `default` entry in the top-level `registries` key, if present.
 If a `--scope` option is passed,
 only the entry for the specified scope is removed, if present.
@@ -547,7 +553,7 @@ only the entry for the specified scope is removed, if present.
 
 The user can pass the `--global` option to the `set` or `unset` subcommands
 to update the user-level configuration file located at
-`~/.swiftpm/config/registries.json`.
+`~/.swiftpm/configuration/registries.json`.
 
 Any default or scoped registries configured locally in a project directory
 override any values configured globally for the user.
@@ -555,10 +561,10 @@ For example,
 consider the following global and local registry configuration files:
 
 ```jsonc
-// Global configuration (~/.swiftpm/config/registries.json)
+// Global configuration (~/.swiftpm/configuration/registries.json)
 {
-  "registries": { 
-    "default": {
+  "registries": {
+    "[default]": {
       "url": "https://global.example.com"
     },
     "foo": {
@@ -568,9 +574,9 @@ consider the following global and local registry configuration files:
   "version": 1
 }
 
-// Local configuration (.swiftpm/config/registries.json)
+// Local configuration (.swiftpm/configuration/registries.json)
 {
-  "registries": { 
+  "registries": {
     "foo": {
       "url": "https://local.example.com"
     }
@@ -593,8 +599,59 @@ in descending order of precedence:
 
 * The package manifest in the current directory (`./Package.swift`)
 * Any existing lock file (`./Package.resolved`)
-* Any local configuration (`./.swiftpm/config/registries.json`)
-* Any global configuration file (`~/.swiftpm/config/registries.json`)
+* Any local configuration (`./.swiftpm/configuration/registries.json`)
+* Any global configuration file (`~/.swiftpm/configuration/registries.json`)
+
+#### Specifying credentials for a custom registry
+
+Some servers may require a username and password.
+The user can provide credentials when setting a custom registry
+by passing the `--login` and `--password` options.
+
+When credentials are provided,
+the corresponding object in the `registries.json` file
+includes a `login` key with the passed value.
+If the project's `.netrc` file has an existing entry
+for a given machine and login,
+it's updated with the new password;
+otherwise, a new entry is added.
+If no `.netrc` file exists,
+a new one is created and populated with the new entry.
+
+```console
+$ swift package-registry set https://internal.example.com/ \
+    --login jappleseed --password alpine
+
+$ cat .netrc
+machine internal.example.com
+login jappleseed
+password alpine
+
+$ cat .swiftpm/configuration/registries.json
+
+{
+  "registries": {
+    "[default]": {
+      "url": "https://internal.example.com"
+      "login": "jappleseed"
+    }
+  },
+  "version": 1
+}
+```
+
+If the user passes the `--login` and `--password` options
+to the `set` subcommand along with the `--global` option,
+the user-level `.netrc` file is updated instead.
+When Swift Package Manager connects to a custom registry,
+it first consults the project's `.netrc` file, if one exists.
+If no entry is found for the custom registry,
+Swift Package Manager then consults the user-level `.netrc` file, if one exists.
+
+If the provided credentials are missing or invalid,
+Swift Package Manager commands like
+`swift package resolve` and `swift package update`
+fail with an error.
 
 ### Changes to config subcommand
 
@@ -603,7 +660,7 @@ in descending order of precedence:
 A user can currently specify an alternate location for a package
 by setting a [dependency mirror][SE-0219] for that package's URL.
 
-```terminal
+```console
 $ swift package config set-mirror \
     --original-url https:///github.com/mona/linkedlist \
     --mirror-url https:///github.com/octocorp/swiftlinkedlist
@@ -612,7 +669,7 @@ $ swift package config set-mirror \
 This proposal updates the `swift package config set-mirror` subcommand
 to accept a `--package-identifier` option in place of an `--original-url`.
 Running this subcommand with a `--package-identifier` option
-creates or updates the `.swiftpm/config/mirrors.json` file,
+creates or updates the `.swiftpm/configuration/mirrors.json` file,
 modifying the array associated with the top-level `object` key
 to add a new entry or update an existing entry
 for the specified package identifier,
@@ -717,7 +774,7 @@ Although the impact of such an attack is potentially high,
 the risk is largely mitigated by the use of cryptographic checksums
 to verify the integrity of downloaded source archives.
 
-```terminal
+```console
 $ echo "$(swift package compute-checksum LinkedList-1.2.0.zip) *LinkedList-1.2.0.zip" | \
     shasum -a 256 -c -
 LinkedList-1.2.0.zip: OK
@@ -735,6 +792,17 @@ A registry can further improve on this model by implementing a
 [checksum database],
 or another comparable, tamper-proof system
 for authenticating package contents.
+
+Distribution of packages through Zip files
+introduces new potential attack vectors.
+For example,
+an attacker could maliciously tamper with a generated source archive
+in an attempt to exploit
+a known vulnerability like [Zip Slip],
+or a common software weakness like susceptibility to a [Zip bomb].
+Swift Package Manager should take care to
+identify and protect against these kinds of attacks 
+in its implementation of source archive decompression.
 
 ### Repudiation
 
@@ -754,7 +822,7 @@ If the history of a project is available
 and the commit used to generate the source archive is signed with [GPG],
 the cryptographic signature may be used to verify the authenticity.
 
-```terminal
+```console
 $ git rev-parse HEAD
 b7c37c81f164e5dce0f64e3d75c79a48fb1fe00b3
 
@@ -776,18 +844,44 @@ can both provide similar non-repudiation guarantees.
 
 ### Information disclosure
 
-A user may inadvertently reveal the existence of a private registry
-or expose hardcoded credentials
-by checking in their project's `.swiftpm/config` directory.
+A user may inadvertently expose credentials
+by checking in their project's configuration files.
+An attacker could scrape public code repositories for configuration files
+and attempt to reuse credentials to impersonate the user.
 
-An attacker could scrape public code repositories for `.swiftpm/config` files
-and attempt to reuse those credentials to impersonate the user.
+The risk of leaking credentials can be mitigated by
+storing them in a `.netrc` file located outside the project directory
+(typically in the user's home directory).
+However,
+a user may run `swift package` subcommands with the `--netrc-file` option
+to configure the location of their project's `.netrc` file.
+To mitigate the risk of a user inadvertently
+adding a local `.netrc` file to version control,
+Swift Package Manager could add an entry to the `.gitignore` file template
+for new projects created with `swift package init`.
+
+Code hosting providers can also help minimize this risk
+by [detecting secrets][secret scanning]
+that are committed to public repositories.
+
+Credentials may also be unintentionally disclosed
+by Swift Package Manager or other tools in logging statements.
+Care should be taken to redact usernames and passwords
+when displaying feedback to the user.
+
+### Denial of service
+
+An attacker could scrape public code repositories
+for `.swiftpm/configuration/registries.json` files
+that declare one or more custom registries
+and launch a denial-of-service attack
+in an attempt to reduce the availability of those resources.
 
 ```json
 {
   "registries": {
-      "default": {
-        "url": "https://<USERNAME>:<TOKEN>@swift.pkg.github.com/<OWNER>/"
+      "[default]": {
+        "url": "https://private.example.com"
       }
   },
   "version": 1
@@ -795,34 +889,12 @@ and attempt to reuse those credentials to impersonate the user.
 
 ```
 
-This kind of attack can be mitigated on an individual basis
-by adding `.swiftpm/config` to a project's `.gitignore` file.
-The risk could be mitigated for all users
-if Swift Package Manager included a `.gitignore` file
-in its new project template.
-Code hosting providers can also help minimize this risk
-by [detecting secrets][secret scanning]
-that are committed to public repositories.
-
-Credentials may also be unintentionally disclosed
-by Swift Package Manager or other tools in logging statements.
-Care should be taken to redact the user info component of URLs
-when displaying feedback to the user
-(for example,
-the URL `https://<USERNAME>:<TOKEN>@swift.pkg.github.com`
-is logged as `https://***@swift.pkg.github.com`).
-
-### Denial of service
-
-An attacker could scrape public code repositories
-for `.swiftpm/config/registries.json` files
-that declare one or more custom registries
-and launch a denial-of-service attack
-in an attempt to reduce the availability of those resources.
-
 The likelihood of this attack is generally low
 but could be used in a targeted way
 against resources known to be important or expensive to distribute.
+
+This kind of attack can be mitigated on an individual basis
+by adding `.swiftpm/configuration` to a project's `.gitignore` file.
 
 ### Escalation of privilege
 
@@ -932,28 +1004,6 @@ of authenticity and non-repudiation beyond what's possible with checksums alone.
 Defining a standard interface for package registries
 lays the groundwork for several useful features.
 
-### Package dependency URL normalization
-
-As described in ["Package name collision resolution"](#package-name-collision-resolution)
-Swift Package Manager cannot build a project
-if two or more packages in the project
-are located by URLs with the same (case-insensitive) last path component.
-Swift Package Manager may improve support URL-based dependencies
-by normalizing package URLs to mitigate insignificant variations.
-For example,
-a package with an ["scp-style" URL][scp-url] like
-`git@github.com:mona/LinkedList.git`
-may be determined to be equivalent to a package with an HTTPS scheme like
-`https:///github.com/mona/LinkedList`.
-
-### Local offline cache
-
-Swift Package Manager could implement an [offline cache]
-that would allow it to work without network access.
-While this is technically possible today,
-a package registry makes for a simpler and more secure implementation
-than would otherwise be possible with Git repositories alone.
-
 ### Package publishing
 
 A package registry is responsible for determining
@@ -989,28 +1039,55 @@ reproducibility, quality assurance, and software traceability.
 
 We intend to work with industry stakeholders
 to develop standards for publishing Swift packages
-in an optional extension to the registry specification.
+in an extension to the registry specification.
 
 ### Package removal
 
-There are several reasons why a package release may be removed, including:
+Removing a package from a registry
+can break other packages that depend on it,
+as demonstrated by the ["left-pad" incident][left-pad] in March 2016.
+We believe package registries can and should
+provide strong durability guarantees
+to ensure the health of the ecosystem.
+
+At the same time,
+there are valid reasons why a package release may be removed:
 
 * The package maintainer publishing a release by mistake
 * A security researcher disclosing a vulnerability for a release
 * The registry being compelled by law enforcement to remove a release
 
-However, removing a package release has the potential to
-break any packages that depend on it.
-
-It's unclear whether or to what extent such policies should be
-informed by registry specification itself.
+It's unclear whether and to what extent package deletion policies
+should be informed by the registry specification itself.
 For now,
 a registry is free to exercise its own discretion
 about how to respond to out-of-band removal requests.
 
 We plan to consider these questions
-as part of the future, optional extension to the specification
+as part of the future extension to the specification
 described in the previous section.
+
+### Package dependency URL normalization
+
+As described in ["Package name collision resolution"](#package-name-collision-resolution)
+Swift Package Manager cannot build a project
+if two or more packages in the project
+are located by URLs with the same (case-insensitive) last path component.
+Swift Package Manager may improve support URL-based dependencies
+by normalizing package URLs to mitigate insignificant variations.
+For example,
+a package with an ["scp-style" URL][scp-url] like
+`git@github.com:mona/LinkedList.git`
+may be determined to be equivalent to a package with an HTTPS scheme like
+`https:///github.com/mona/LinkedList`.
+
+### Local offline cache
+
+Swift Package Manager could implement an [offline cache]
+that would allow it to work without network access.
+While this is technically possible today,
+a package registry makes for a simpler and more secure implementation
+than would otherwise be possible with Git repositories alone.
 
 ### Binary framework distribution
 
@@ -1047,7 +1124,7 @@ let package = Package(
 could be extended to add dependencies using scoped identifiers
 in addition to URLs.
 
-```terminal
+```console
 $ swift package add-dependency mona.LinkedList
 # Installed LinkedList 1.2.0
 ```
@@ -1062,7 +1139,7 @@ Swift Package Manager could add tooling
 to help package maintainers adopt registry-supported identifiers
 in their projects.
 
-```terminal
+```console
 $ swift package-registry migrate
 ```
 
@@ -1096,7 +1173,7 @@ Swift Package Manager could communicate this information to users
 when installing or updating dependencies
 or as part of a new `swift package audit` subcommand.
 
-```terminal
+```console
 $ swift package audit
 ┌───────────────┬────────────────────────────────────────────────┐
 │ High          │ Regular Expression Denial of Service           │
@@ -1120,7 +1197,7 @@ The package registry API could be extended to add a search endpoint
 to allow users to search for packages by name, keywords, or other criteria.
 This endpoint could be used by clients like Swift Package Manager.
 
-```terminal
+```console
 $ swift package search LinkedList
 LinkedList (github.com/mona/LinkedList) - One thing links to another.
 
@@ -1143,6 +1220,7 @@ RegEx (github.com/mona/RegEx) - Expressions on the reg.
 [ICANN]: https://www.icann.org
 [JFrog Artifactory]: https://jfrog.com/artifactory/
 [JSON-LD]: https://w3c.github.io/json-ld-syntax/ "JSON-LD 1.1: A JSON-based Serialization for Linked Data"
+[left-pad]: https://qz.com/646467/how-one-programmer-broke-the-internet-by-deleting-a-tiny-piece-of-code/ "How one programmer broke the internet by deleting a tiny piece of code"
 [Maven]: https://maven.apache.org
 [npm]: https://www.npmjs.com "The npm Registry"
 [offline cache]: https://yarnpkg.com/features/offline-cache "Offline Cache | Yarn - Package Manager"
@@ -1180,12 +1258,10 @@ RegEx (github.com/mona/RegEx) - Expressions on the reg.
 [TOFU]: https://en.wikipedia.org/wiki/Trust_on_first_use "Trust on First Use"
 [transparent log]: https://research.swtch.com/tlog
 [typosquatting]: https://en.wikipedia.org/wiki/Typosquatting
-[UAX15]: http://www.unicode.org/reports/tr15/ "Unicode Technical Report #15: Unicode Normalization Forms"
-[UAX18]: http://www.unicode.org/reports/tr18/ "Unicode Technical Report #18: Unicode Regular Expressions"
-[UAX31]: http://www.unicode.org/reports/tr31/ "Unicode Technical Report #31: Unicode Identifier and Pattern Syntax"
-[UAX36]: http://www.unicode.org/reports/tr36/ "Unicode Technical Report #36: Unicode Security Considerations"
 [UTI]: https://en.wikipedia.org/wiki/Uniform_Type_Identifier
 [version-specific-manifest-selection]: https://github.com/apple/swift-package-manager/blob/main/Documentation/Usage.md#version-specific-manifest-selection "Swift Package Manager - Version-specific Manifest Selection"
 [version-specific-tag-selection]: https://github.com/apple/swift-package-manager/blob/main/Documentation/Usage.md#version-specific-tag-selection "Swift Package Manager - Version-specific Tag Selection"
 [XCFramework]: https://developer.apple.com/videos/play/wwdc2019/416/ "WWDC 2019 Session 416: Binary Frameworks in Swift"
 [xss]: https://en.wikipedia.org/wiki/Cross-site_scripting
+[Zip bomb]: https://en.wikipedia.org/wiki/Zip_bomb "Zip bomb"
+[Zip Slip]: https://snyk.io/research/zip-slip-vulnerability "Zip Slip Vulnerability"
